@@ -2,6 +2,7 @@ torch
 torchvision
 numpy
 scipy
+scikit-image
 pillow
 openslide-python
 segmentation-models-pytorch
