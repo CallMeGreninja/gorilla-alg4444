@@ -1,0 +1,9 @@
+torch
+torchvision
+numpy
+scipy
+pillow
+openslide-python
+segmentation-models-pytorch
+albumentations
+tqdm
