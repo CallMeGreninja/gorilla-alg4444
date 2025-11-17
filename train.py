@@ -11,16 +11,14 @@ from tqdm import tqdm
 NUM_EPOCHS = 30
 BATCH_SIZE = 8
 LEARNING_RATE = 1e-5
-TRAIN_DATA_ROOT = './data/train'
-VAL_DATA_ROOT = './data/validation'
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 MODEL_SAVE_DIR = './model_weights'
 os.makedirs(MODEL_SAVE_DIR, exist_ok=True)
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#Debugging
-if DEVICE.type == 'cuda':
-    print(f"CUDA is being used! Training on GPU: {torch.cuda.get_device_name(0)}")
-else:
-    print("CUDA is not available. Training on CPU")
+
+TRAIN_DATA_ROOT = './data/train'
+VAL_DATA_ROOT = './data/validation'
 
 def build_model():
     model = smp.Unet(
@@ -47,10 +45,7 @@ def validate_model(model, val_loader, criterion, device):
     avg_val_loss = total_val_loss / len(val_loader)
     return avg_val_loss
 
-def train_model():
-    train_dataset = MonkeyDataset(data_root_dir=TRAIN_DATA_ROOT, split='train')
-    val_dataset = MonkeyDataset(data_root_dir=VAL_DATA_ROOT, split='val')
-    
+def train_model(train_dataset, val_dataset):    
     train_loader = DataLoader(
         train_dataset, 
         batch_size=BATCH_SIZE, 
@@ -111,4 +106,14 @@ def train_model():
             print(f"Model improved! Saving best model to {save_path}")
         
 if __name__ == '__main__':
-    train_model()
+    if DEVICE.type == 'cuda':
+        print(f"CUDA is being used! Training on GPU: {torch.cuda.get_device_name(0)}")
+    else:
+        print("CUDA is not available. Training on CPU")
+
+    print("--- Initializing Train Dataset (Annotations/ROI loading happens now) ---")
+    train_dataset = MonkeyDataset(data_root_dir=TRAIN_DATA_ROOT, split='train')
+    print("--- Initializing Validation Dataset (Annotations/ROI loading happens now) ---")
+    val_dataset = MonkeyDataset(data_root_dir=VAL_DATA_ROOT, split='val')
+
+    train_model(train_dataset, val_dataset)

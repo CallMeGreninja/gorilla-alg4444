@@ -101,31 +101,15 @@ class MonkeyDataset(Dataset):
     
     def _create_patch_samples(self, roi_bounds):
         samples = []
+        STRIDE = self.patch_size // 2
 
-        for slide_id, dots in self.annotations.items():
-            if not slide_id in roi_bounds:
-                continue
-
-            bounds = roi_bounds[slide_id]
+        for slide_id, bounds in roi_bounds.items():
             xmin, ymin = bounds['xmin'], bounds['ymin']
             xmax, ymax = bounds['xmax'], bounds['ymax']
 
-            for dot in dots:
-                x_center, y_center = dot['x'], dot['y']
-                x_global = x_center - self.patch_size // 2
-                y_global = y_center - self.patch_size // 2
-                
-                if x_global >= 0 and y_global >= 0 and \
-                    x_global + self.patch_size <= xmax and \
-                    y_global + self.patch_size <= ymax:
+            for x_global in range(xmin, xmax - self.patch_size + 1, STRIDE):
+                for y_global in range(ymin, ymax - self.patch_size + 1, STRIDE):
                     samples.append((slide_id, x_global, y_global))
-
-            num_negative = len(dots) // 5 
-        
-            for _ in range(num_negative):
-                x_rand = random.randint(xmin, xmax - self.patch_size)
-                y_rand = random.randint(ymin, ymax - self.patch_size)
-                samples.append((slide_id, x_rand, y_rand))  
 
         return samples
 
