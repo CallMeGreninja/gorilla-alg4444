@@ -101,7 +101,7 @@ class MonkeyDataset(Dataset):
     
     def _create_patch_samples(self, roi_bounds):
         samples = []
-        STRIDE = self.patch_size // 2
+        STRIDE = self.patch_size
 
         for slide_id, bounds in roi_bounds.items():
             xmin, ymin = bounds['xmin'], bounds['ymin']
