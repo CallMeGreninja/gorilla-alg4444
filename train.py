@@ -33,11 +33,14 @@ def validate_model(model, val_loader, criterion, device):
     model.eval()
     total_val_loss = 0.0
     
-    for pas_patches, target_heatmaps in val_loader:
+    for batch_idx, (pas_patches, target_heatmaps) in enumerate(val_loader):
         pas_patches = pas_patches.to(device)
         target_heatmaps = target_heatmaps.to(device)
         
         predicted_heatmaps = model(pas_patches)
+        if batch_idx % 1000 == 0:
+            print(f"Max Prediction Value: {predicted_heatmaps.max().item():.6f}")
+
         loss = criterion(predicted_heatmaps, target_heatmaps)
         
         total_val_loss += loss.item()
@@ -45,6 +48,19 @@ def validate_model(model, val_loader, criterion, device):
     avg_val_loss = total_val_loss / len(val_loader)
     return avg_val_loss
 
+class WeightedMSELoss(nn.Module):
+    def __init__(self, weight=10.0):
+        super().__init__()
+        self.weight = weight
+
+    def forward(self, pred, target):
+        loss = (pred - target) ** 2
+
+        weights = torch.ones_like(target) + (target > 0).float() * (self.weight - 1)
+
+        loss = loss * weights
+        return loss.mean()
+    
 def train_model(train_dataset, val_dataset):    
     train_loader = DataLoader(
         train_dataset, 
@@ -69,7 +85,7 @@ def train_model(train_dataset, val_dataset):
         print(f"🔄 Loading best weights from {best_model_path} to resume training...")
         model.load_state_dict(torch.load(best_model_path, map_location=DEVICE))
     
-    criterion = nn.MSELoss() 
+    criterion = WeightedMSELoss(weight=50.0) 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
     best_val_loss = np.inf
@@ -80,9 +96,11 @@ def train_model(train_dataset, val_dataset):
         model.train()
         running_loss = 0.0
         
-        for pas_patches, target_heatmaps in tqdm(train_loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS} (Train)"):
+        for batch_idx,(pas_patches, target_heatmaps) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS} (Train)")):
             pas_patches = pas_patches.to(DEVICE)
             target_heatmaps = target_heatmaps.to(DEVICE)
+            if batch_idx % 1000 == 0:
+                print(f"Training Max Prediction Value (Batch {batch_idx}): {model(pas_patches).max().item():.6f}")
             
             optimizer.zero_grad()
             predicted_heatmaps = model(pas_patches)
@@ -97,7 +115,7 @@ def train_model(train_dataset, val_dataset):
 
         epoch_val_loss = validate_model(model, val_loader, criterion, DEVICE)
         
-        print(f"\nEpoch {epoch+1} finished. Train Loss: {epoch_train_loss:.4f} | Val Loss: {epoch_val_loss:.4f}")
+        print(f"\nEpoch {epoch+1} finished. Train Loss: {epoch_train_loss:.8f} | Val Loss: {epoch_val_loss:.8f}")
 
         if epoch_val_loss < best_val_loss:
             best_val_loss = epoch_val_loss
