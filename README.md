@@ -114,8 +114,8 @@ python inference.py
 
 Data Sampling
 
-Instead of randomly sampling patches, we employ a Systematic Tiling strategy. We iterate through the valid tissue area (defined by tissue masks) using a stride equal to the patch size ($256\times256$). This ensures the model sees 100% of the tissue, including empty background areas, reducing false positives.
+Instead of randomly sampling patches, I employ a Systematic Tiling strategy. I iterate through the valid tissue area (defined by tissue masks) using a stride equal to the patch size ($256\times256$). This ensures the model sees 100% of the tissue, including empty background areas, reducing false positives.
 
 Loss Function
 
-We utilize a Weighted MSE Loss. Since cells occupy <1% of the pixels, a standard MSE loss leads to model collapse (predicting all zeros). We apply a weight factor (e.g., $100\times$) to pixels containing cell gaussian peaks to force the model to learn features.
+I utilize a Weighted MSE Loss. Since cells occupy <1% of the pixels, a standard MSE loss leads to model collapse (predicting all zeros). I apply a weight factor (e.g., $100\times$) to pixels containing cell gaussian peaks to force the model to learn features.
