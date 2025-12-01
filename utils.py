@@ -49,20 +49,20 @@ def parse_xml_annotations(xml_path, classes={'lymphocyte': 0, 'monocyte': 1}):
         else:
             continue
 
-    for coordinates_tag in annotation.findall('.//Coordinates'):
-            for coordinate in coordinates_tag.findall('.//Coordinate'):
-                try:
-                    x = int(float(coordinate.get('X')))
-                    y = int(float(coordinate.get('Y')))
-                    current_slide_annotations.append({
-                        'x': x, 
-                        'y': y, 
-                        'class_id': class_id, 
-                        'class_name': class_name
-                    })
+        for coordinates_tag in annotation.findall('.//Coordinates'):
+                for coordinate in coordinates_tag.findall('.//Coordinate'):
+                    try:
+                        x = int(float(coordinate.get('X')))
+                        y = int(float(coordinate.get('Y')))
+                        current_slide_annotations.append({
+                            'x': x, 
+                            'y': y, 
+                            'class_id': class_id, 
+                            'class_name': class_name
+                        })
 
-                except (ValueError, TypeError):
-                    continue
+                    except (ValueError, TypeError):
+                        continue
                     
     return current_slide_annotations
 

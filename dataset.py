@@ -27,6 +27,32 @@ class MonkeyDataset(Dataset):
 
         self.samples = self._create_patch_samples(self.roi_bounds)
         self.transform = self._get_augmentations(split)
+
+        print(f"\n📊 Dataset Statistics:")
+        print(f"   Total slides with masks: {len(self.roi_bounds)}")
+        print(f"   Total slides with annotations: {len(self.annotations)}")
+        print(f"   Total patches: {len(self.samples)}")
+
+        slides_with_both = set(self.roi_bounds.keys()) & set(self.annotations.keys())
+        slides_mask_only = set(self.roi_bounds.keys()) - set(self.annotations.keys())
+        
+        print(f"   Slides with BOTH mask + annotations: {len(slides_with_both)}")
+        print(f"   Slides with mask but NO annotations: {len(slides_mask_only)}")
+        
+        if slides_mask_only:
+            print(f"\n⚠️  Slides missing annotations: {list(slides_mask_only)[:5]}...")
+
+        patches_with_cells = 0
+        for slide_id, x, y in self.samples[:1000]:
+            if slide_id in self.annotations:
+                for dot in self.annotations[slide_id]:
+                    if (x <= dot['x'] < x + self.patch_size) and \
+                    (y <= dot['y'] < y + self.patch_size):
+                        patches_with_cells += 1
+                        break
+        
+        print(f"   Patches with cells (first 1000): {patches_with_cells}/1000")
+        print()
         
     def _load_all_annotations(self, xml_dir):
         all_annotations = {}
@@ -103,7 +129,17 @@ class MonkeyDataset(Dataset):
         samples = []
         STRIDE = self.patch_size
 
-        for slide_id, bounds in roi_bounds.items():
+        annotated_slides = set(self.annotations.keys()) & set(roi_bounds.keys())
+        unannotated_slides = set(roi_bounds.keys()) - set(self.annotations.keys())
+        
+        if unannotated_slides:
+            print(f"⚠️  Warning: {len(unannotated_slides)} slides have masks but no annotations")
+            print(f"    Examples: {list(unannotated_slides)[:3]}")
+        
+        print(f"Creating patches from {len(annotated_slides)} annotated slides...")
+
+        for slide_id in annotated_slides:
+            bounds = roi_bounds[slide_id]
             xmin, ymin = bounds['xmin'], bounds['ymin']
             xmax, ymax = bounds['xmax'], bounds['ymax']
 
@@ -111,6 +147,11 @@ class MonkeyDataset(Dataset):
                 for y_global in range(ymin, ymax - self.patch_size + 1, STRIDE):
                     samples.append((slide_id, x_global, y_global))
 
+        print(f"Created {len(samples)} patches from {len(annotated_slides)} slides")
+        
+        if len(samples) == 0:
+            raise ValueError("❌ No patches created! Check that slide IDs match between masks and annotations")
+        
         return samples
 
     def _get_augmentations(self, split):
