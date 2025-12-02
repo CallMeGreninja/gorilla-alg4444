@@ -1,29 +1,28 @@
-FROM nvcr.io/nvidia/pytorch:22.09-py3 
+FROM nvcr.io/nvidia/pytorch:22.09-py3
 
-ENV PATH="/usr/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
-COPY requirements.txt .
+RUN apt-get update && apt-get install -y \
+    libopenslide0 \
+    openslide-tools \
+    && rm -rf /var/lib/apt/lists/*
 
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY train.py utils.py dataset.py inference.py ./
+COPY inference.py ./
 
-COPY model_weights/best_model.pth .
+COPY model_weights/best_model.pth /app/best_model.pth
+RUN mkdir -p /opt/ml/model && cp /app/best_model.pth /opt/ml/model/
 
-RUN mkdir -p /opt/algorithm && \ 
-    mkdir -p /input && \
-    mkdir -p /output
+RUN mkdir -p /input /output /opt/algorithm && chmod 777 /input /output /app
 
-RUN groupadd -r app_user && useradd -r -g app_user app_user
+RUN groupadd -r algorithm && useradd -m --no-log-init -r -g algorithm algorithm
+RUN chown -R algorithm:algorithm /app /opt/ml /opt/algorithm /input /output
 
-RUN chown -R app_user:app_user /app && \
-    chown -R app_user:app_user /opt/algorithm && \
-    chown -R app_user:app_user /input && \
-    chown -R app_user:app_user /output
-
-USER app_user
+USER algorithm
 
 ENTRYPOINT ["python", "inference.py"]
