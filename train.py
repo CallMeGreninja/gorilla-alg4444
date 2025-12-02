@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 NUM_EPOCHS = 10
 BATCH_SIZE = 16
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 3e-4
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -26,6 +26,7 @@ def build_model():
         encoder_weights="imagenet",
         in_channels=3,
         classes=2,
+        activation='sigmoid',
     )
     return model
 
@@ -33,17 +34,19 @@ def validate_model(model, val_loader, criterion, device):
     model.eval()
     total_val_loss = 0.0
     
-    for batch_idx, (pas_patches, target_heatmaps) in enumerate(val_loader):
-        pas_patches = pas_patches.to(device)
-        target_heatmaps = target_heatmaps.to(device)
-        
-        predicted_heatmaps = model(pas_patches)
-        if batch_idx % 1000 == 0:
-            print(f"Max Prediction Value: {predicted_heatmaps.max().item():.6f}")
+    with torch.no_grad():
+        for batch_idx, (pas_patches, target_heatmaps) in enumerate(val_loader):
+            pas_patches = pas_patches.to(device)
+            target_heatmaps = target_heatmaps.to(device)
+            
+            predicted_heatmaps = model(pas_patches)
+            
+            if batch_idx == 0:
+                print(f"Val - Max Pred: {predicted_heatmaps.max().item():.4f}, "
+                      f"Mean Pred: {predicted_heatmaps.mean().item():.4f}")
 
-        loss = criterion(predicted_heatmaps, target_heatmaps)
-        
-        total_val_loss += loss.item()
+            loss = criterion(predicted_heatmaps, target_heatmaps)
+            total_val_loss += loss.item()
         
     avg_val_loss = total_val_loss / len(val_loader)
     return avg_val_loss
@@ -55,9 +58,7 @@ class WeightedMSELoss(nn.Module):
 
     def forward(self, pred, target):
         loss = (pred - target) ** 2
-
         weights = torch.ones_like(target) + (target > 0.05).float() * (self.weight - 1)
-
         loss = loss * weights
         return loss.mean()
     
@@ -80,27 +81,32 @@ def train_model(train_dataset, val_dataset):
     model = build_model().to(DEVICE)
 
     best_model_path = os.path.join(MODEL_SAVE_DIR, 'best_model.pth')
-    
-    if os.path.exists(best_model_path):
-        print(f"🔄 Loading best weights from {best_model_path} to resume training...")
-        model.load_state_dict(torch.load(best_model_path, map_location=DEVICE))
-    
     criterion = WeightedMSELoss(weight=100.0) 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.5)
     
     best_val_loss = np.inf
 
     print(f"Starting training. Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}.")
+    print(f"Training for {NUM_EPOCHS} epochs with LR={LEARNING_RATE}")
     
     for epoch in range(NUM_EPOCHS):
         model.train()
         running_loss = 0.0
         
-        for batch_idx,(pas_patches, target_heatmaps) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS} (Train)")):
+        for batch_idx, (pas_patches, target_heatmaps) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS}")):
             pas_patches = pas_patches.to(DEVICE)
             target_heatmaps = target_heatmaps.to(DEVICE)
-            if batch_idx % 1000 == 0:
-                print(f"Training Max Prediction Value (Batch {batch_idx}): {model(pas_patches).max().item():.6f}")
+
+            if epoch == 0 and batch_idx == 0:
+                with torch.no_grad():
+                    sample_pred = model(pas_patches)
+                    print(f"\n🔍 First batch check:")
+                    print(f"   Pred range: [{sample_pred.min().item():.4f}, {sample_pred.max().item():.4f}]")
+                    print(f"   Pred mean: {sample_pred.mean().item():.4f}")
+                    print(f"   Target range: [{target_heatmaps.min().item():.4f}, {target_heatmaps.max().item():.4f}]")
+                    print(f"   Target has cells: {(target_heatmaps > 0.05).sum().item()} pixels\n")
             
             optimizer.zero_grad()
             predicted_heatmaps = model(pas_patches)
@@ -114,24 +120,34 @@ def train_model(train_dataset, val_dataset):
         epoch_train_loss = running_loss / len(train_loader)
 
         epoch_val_loss = validate_model(model, val_loader, criterion, DEVICE)
+
+        scheduler.step()
         
-        print(f"\nEpoch {epoch+1} finished. Train Loss: {epoch_train_loss:.8f} | Val Loss: {epoch_val_loss:.8f}")
+        print(f"\n{'='*60}")
+        print(f"Epoch {epoch+1}/{NUM_EPOCHS}:")
+        print(f"  Train Loss: {epoch_train_loss:.6f}")
+        print(f"  Val Loss:   {epoch_val_loss:.6f}")
+        print(f"  LR:         {optimizer.param_groups[0]['lr']:.2e}")
+        print(f"{'='*60}\n")
 
         if epoch_val_loss < best_val_loss:
             best_val_loss = epoch_val_loss
             save_path = os.path.join(MODEL_SAVE_DIR, 'best_model.pth')
             torch.save(model.state_dict(), save_path)
-            print(f"Model improved! Saving best model to {save_path}")
+            print(f"✅ Model improved! Val loss: {best_val_loss:.6f}\n")
+    
+    print(f"\n🎉 Training complete! Best val loss: {best_val_loss:.6f}")
+    print(f"Model saved to: {best_model_path}")
         
 if __name__ == '__main__':
     if DEVICE.type == 'cuda':
-        print(f"CUDA is being used! Training on GPU: {torch.cuda.get_device_name(0)}")
+        print(f"✅ CUDA available! Training on: {torch.cuda.get_device_name(0)}")
     else:
-        print("CUDA is not available. Training on CPU")
+        print("⚠️ CUDA not available. Training on CPU (will be slow)")
 
-    print("--- Initializing Train Dataset (Annotations/ROI loading happens now) ---")
+    print("\n--- Initializing Train Dataset ---")
     train_dataset = MonkeyDataset(data_root_dir=TRAIN_DATA_ROOT, split='train')
-    print("--- Initializing Validation Dataset (Annotations/ROI loading happens now) ---")
+    print("--- Initializing Validation Dataset ---")
     val_dataset = MonkeyDataset(data_root_dir=VAL_DATA_ROOT, split='val')
 
     train_model(train_dataset, val_dataset)
